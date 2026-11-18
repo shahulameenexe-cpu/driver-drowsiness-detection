@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Drowsiness & Fatigue Detection System</title>
+    <meta name="description" content="AI-powered real-time driver drowsiness, fatigue, and yawn detection system with vehicular HUD telemetry, Web Audio alarms, and CSV reporting.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js for real-time telemetry graphing -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- MediaPipe Face Mesh & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <header class="navbar">
+        <div class="brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <h1>SENTINEL DRIVE AI</h1>
+                <p>Real-Time Drowsiness & Safety Monitor</p>
+            </div>
+        </div>
+
+        <div class="status-container">
+            <div id="systemStatusBadge" class="status-badge">
+                <span class="status-dot"></span>
+                <span id="statusText">SYSTEM READY</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-grid">
+        <!-- Left Main Area -->
+        <section class="main-content">
+            <!-- HUD Camera Card -->
+            <div class="hud-card">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                    Live Visual Telemetry & Facial Mesh Overlay
+                </div>
+
+                <div class="video-container">
+                    <video id="webcamVideo" playsinline muted></video>
+                    <video id="simulatedVideo" playsinline muted loop></video>
+                    <canvas id="overlayCanvas"></canvas>
+
+                    <!-- HUD Graphic Elements -->
+                    <div class="hud-overlay">
+                        <div class="hud-corner top-left"></div>
+                        <div class="hud-corner top-right"></div>
+                        <div class="hud-corner bottom-left"></div>
+                        <div class="hud-corner bottom-right"></div>
+                    </div>
+
+                    <!-- Camera Control Overlay Bar -->
+                    <div class="camera-controls-bar">
+                        <button id="btnStartCamera" class="btn btn-primary btn-sm">
+                            <span>▶ Start Camera</span>
+                        </button>
+                        <button id="btnStopCamera" class="btn btn-secondary btn-sm" style="display: none;">
+                            <span>⏹ Stop Camera</span>
+                        </button>
+                        <button id="btnToggleDemo" class="btn btn-secondary btn-sm">
+                            <span>🎬 Start Demo Mode</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Telemetry Gauges Row -->
+                <div class="telemetry-row">
+                    <div class="metric-card">
+                        <div class="metric-label">Eye Aspect Ratio</div>
+                        <div id="valEAR" class="metric-val">0.32</div>
+                        <div id="subEAR" class="metric-sub">Target > <span id="lblEarThresh">0.22</span></div>
+                        <div class="metric-progress">
+                            <div id="barEAR" class="metric-bar" style="width: 70%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">Mouth Aspect Ratio</div>
+                        <div id="valMAR" class="metric-val">0.18</div>
+                        <div id="subMAR" class="metric-sub">Yawn Target < <span id="lblMarThresh">0.55</span></div>
+                        <div class="metric-progress">
+                            <div id="barMAR" class="metric-bar" style="width: 25%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">Attention Score</div>
+                        <div id="valAttention" class="metric-val" style="color: var(--success-green);">100%</div>
+                        <div class="metric-sub">Driver Vigilance</div>
+                        <div class="metric-progress">
+                            <div id="barAttention" class="metric-bar" style="width: 100%; background: var(--success-green);"></div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-label">Blink Rate</div>
+                        <div id="valBpm" class="metric-val">16</div>
+                        <div class="metric-sub">Blinks / Min</div>
+                        <div class="metric-progress">
+                            <div id="barBpm" class="metric-bar" style="width: 40%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-Time Telemetry Graph Card -->
+            <div class="hud-card" style="margin-top: 1.5rem;">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.09-4-4L2 17.08l1.5 1.41z"/></svg>
+                    Real-Time EAR & MAR Fatigue Timeline
+                </div>
+                <div class="chart-container">
+                    <canvas id="telemetryChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Trip Event Log Table -->
+            <div class="hud-card" style="margin-top: 1.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                    <div class="card-title" style="margin-bottom: 0;">
+                        <svg viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                        Incident & Fatigue Event Log
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="btnExportCsv" class="btn btn-secondary btn-sm">📥 Export CSV</button>
+                        <button id="btnClearLog" class="btn btn-secondary btn-sm">🗑 Clear Log</button>
+                    </div>
+                </div>
+
+                <div class="log-table-container">
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Event Type</th>
+                                <th>EAR</th>
+                                <th>MAR</th>
+                                <th>Duration</th>
+                                <th>Action Taken</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logTableBody">
+                            <tr>
+                                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1rem;">No fatigue incidents logged yet. Stay alert!</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Side Settings & Controls Panel -->
+        <aside class="sidebar-content">
+            <!-- Detection Controls Card -->
+            <div class="hud-card">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+                    Sensitivity & Thresholds
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>EAR Drowsiness Threshold</span>
+                        <span id="txtEarThreshVal" class="control-value">0.22</span>
+                    </div>
+                    <input type="range" id="inputEarThresh" class="slider-input" min="0.15" max="0.32" step="0.01" value="0.22">
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Drowsy Trigger Duration (Sec)</span>
+                        <span id="txtDurationVal" class="control-value">1.5 s</span>
+                    </div>
+                    <input type="range" id="inputDuration" class="slider-input" min="0.5" max="3.0" step="0.1" value="1.5">
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>MAR Yawn Threshold</span>
+                        <span id="txtMarThreshVal" class="control-value">0.55</span>
+                    </div>
+                    <input type="range" id="inputMarThresh" class="slider-input" min="0.40" max="0.80" step="0.02" value="0.55">
+                </div>
+            </div>
+
+            <!-- Audio & Alert Settings -->
+            <div class="hud-card" style="margin-top: 1.25rem;">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                    Alert Sound & Voice Config
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Alarm Sound Type</span>
+                    </div>
+                    <select id="selectSoundType" class="select-input">
+                        <option value="siren">🚨 Emergency Siren (High Pitch)</option>
+                        <option value="pulse">🔊 Pulsing Alert Signal</option>
+                        <option value="beep">🔔 Rapid Warning Beep</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Alarm Volume</span>
+                        <span id="txtVolumeVal" class="control-value">80%</span>
+                    </div>
+                    <input type="range" id="inputVolume" class="slider-input" min="0" max="1" step="0.05" value="0.8">
+                </div>
+
+                <div class="control-group" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem;">
+                    <span style="font-family: var(--font-tech); font-weight: 600; font-size: 0.9rem;">Voice Assistance Alert</span>
+                    <input type="checkbox" id="chkVoiceAlert" checked style="width: 18px; height: 18px; accent-color: var(--primary-cyan); cursor: pointer;">
+                </div>
+
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                    <button id="btnTestAlarm" class="btn btn-secondary btn-sm" style="width: 100%;">🔊 Test Alarm Sound</button>
+                    <button id="btnTestVoice" class="btn btn-secondary btn-sm" style="width: 100%;">🗣 Test Voice Alert</button>
+                </div>
+            </div>
+
+            <!-- Demo Driver Simulation Switcher -->
+            <div class="hud-card" style="margin-top: 1.25rem;">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+                    Demo Simulation Mode
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+                    Test the system under various simulated driving fatigue scenarios:
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <button id="btnSimNormal" class="btn btn-secondary btn-sm">🟢 Normal Alert Driver</button>
+                    <button id="btnSimDrowsy" class="btn btn-danger btn-sm">🔴 Drowsy Eye Closure (Alert)</button>
+                    <button id="btnSimYawn" class="btn btn-secondary btn-sm" style="color: var(--warning-yellow); border-color: var(--warning-yellow);">🟡 Yawning Sequence</button>
+                    <button id="btnSimNod" class="btn btn-secondary btn-sm" style="color: #a855f7; border-color: #a855f7;">🟣 Head Droop / Nodding</button>
+                </div>
+            </div>
+
+            <!-- Standalone Python Info Card -->
+            <div class="hud-card" style="margin-top: 1.25rem;">
+                <div class="card-title">
+                    <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+                    Native Python Engine
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+                    Included in this project is a standalone OpenCV & MediaPipe Python detector script (<code>drowsiness_detector.py</code>).
+                </p>
+                <code style="display:block; font-size: 0.75rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px; color: var(--primary-cyan);">
+                    python drowsiness_detector.py
+                </code>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Custom Scripts -->
+    <script src="audio.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
